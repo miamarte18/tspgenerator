@@ -1,12 +1,11 @@
 #TSP project
 #Purpose: From the starting point of the path, we wanna find the shorterst path of the distance.
-#Last day edited: 6/21/2023
+#Last day edited: 6/20/2023
 #Autors: Mia Marte, Sofia Torres, Stephanie Saenz
 
 import random
-
 from math import sqrt
-
+import streamlit as st 
 
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
@@ -17,6 +16,11 @@ from matplotlib.path import Path
 cityL = []
 demographic = []
 
+with st.container():
+    
+    st.title('Travelling salesman problem')
+    st.subheader("Project 2 by Sofia Torres, Stephanie Seanz, and Mia Marte")
+    st.write("Using the travelling salesman problem we incorporate generic algorithms to find\n the shortest path of the distance from the starting point ")
 
 
 class City:
@@ -32,7 +36,7 @@ class City:
 
     def __repr__(self):
         return "(" + str(self.x) + "," + str(self.y) + ")"
-
+n = st.slider('How many destinations to generate?', 5, 200, 5)
 class Fitness:
     def __init__(self, route):
         self.route = route
@@ -42,15 +46,15 @@ class Fitness:
     def routeDistance(self):
         if self.dis == 0:
             pathDis = 0
-            
+            # looping through route to calculate distance
             for i in range(0, len(self.route)):
                 fromCity = self.route[i]
                 toCity = None
                 if i + 1 < len(self.route):
-                    
+                    # getting next city in route
                     toCity = self.route[i + 1]
                 else:
-                    
+                    # returning to start city
                     toCity = self.route[0]
                 pathDis += fromCity.distance(toCity)
             self.dis = pathDis
@@ -72,7 +76,7 @@ def plotCities():
 
 
 def initValues(size):
-    # Initial City 
+    # Initial City List
     for i in range(0, 25):
         cityL.append(City(x=int(random.random()*200),
                         y=int(random.random()*200)))
@@ -124,7 +128,7 @@ def breed(p1, p2):
     childP1 = []
     childP2 = []
 
-    
+    # ordered crossover
     geneA = int(random.random() * len(p1))
     geneB = int(random.random() * len(p1))
 
@@ -202,7 +206,7 @@ def geneAlgo(popSize, eliteSize, mutationRate, generations):
 
     axs[0].plot(progress)
     axs[0].set_title("Progress Graph")
-   
+    #axs[1].set_ylabel('\nDistance\n')
     
 
     x = [cities.x for cities in bestRoute]
