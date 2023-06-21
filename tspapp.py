@@ -13,12 +13,14 @@ import numpy as np
 from matplotlib.path import Path
  
 
-cityL = []
-demographic = []
-
 with st.container():
     st.subheader("Project 2 by Sofia Torres, Stephanie Seanz, and Mia Marte 👋")
     st.title('Travelling salesman problem')
+   
+cityL = []
+demographic = []
+
+
 
 
 class City:
