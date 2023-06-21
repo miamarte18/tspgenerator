@@ -36,7 +36,7 @@ class City:
 
     def __repr__(self):
         return "(" + str(self.x) + "," + str(self.y) + ")"
-
+n = st.slider('How many destinations to generate?', 5, 200, 5)
 class Fitness:
     def __init__(self, route):
         self.route = route
