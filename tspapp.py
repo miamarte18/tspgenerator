@@ -1,208 +1,120 @@
-import random
-from math import sqrt
-import streamlit as st
+mport streamlit as st
+import numpy as np
 import matplotlib.pyplot as plt
-
-cityL = []
-demographic = []
-
+import pandas as pd
+import math
+import random
+import itertools
+from gurobipy import *
+plt.rcParams['savefig.pad_inches'] = 0
 st.title('Travelling salesman problem')
-st.subheader("Project 2 by Sofia Torres, Stephanie Seanz, and Mia Marte")
-st.write("Using the travelling salesman problem we incorporate generic algorithms to find\n the shortest path of the distance from the starting point ")
 
-class City:
-    def __init__(self, x, y):
-        self.x = x
-        self.y = y
+# Callback - use lazy constraints to eliminate sub-tours
 
-    def distance(self, city):
-        xdis = abs(self.x - city.x)
-        ydis = abs(self.y - city.y)
-        dis = sqrt((xdis**2) + (ydis**2))
-        return dis
+def subtourelim(model, where):
+    if where == GRB.Callback.MIPSOL:
+        # make a list of edges selected in the solution
+        vals = model.cbGetSolution(model._vars)
+        selected = tuplelist((i,j) for i,j in model._vars.keys() if vals[i,j] > 0.5)
+        # find the shortest cycle in the selected edge list
+        tour,tours = subtour(selected)
+ 
+        if len(tour) < n:
+            model._subtours += 1
+            # add subtour elimination constraint for every pair of cities in tour
+            model.cbLazy(quicksum(model._vars[i,j]
+                                  for i,j in itertools.combinations(tour, 2))
+                         <= len(tour)-1)
+               #st.write(tour)
+        current_length = round(model.cbGet(GRB.Callback.MIPSOL_OBJ))
+        best = round(model.cbGet(GRB.Callback.MIPSOL_OBJBST))
+        bound = max(0,round(model.cbGet(GRB.Callback.MIPSOL_OBJBND)))
+        model._summary.markdown("**Sub tour elimination constraints** {:d} **Lower bound** {:d}km  \n**Current Solution**  {:d}km  - {:d} subtour(s)".format(model._subtours,bound,current_length,len(tours)))
+        #TODO update bound in other callback. Structure output
+        plt.plot([x[0] for x in points], [x[1] for x in points], 'o')
+        #print("total tours " + str(sum(len(t) for t in tours)))
+        for tour in tours:
+            tour.append(tour[0])
+            points_tour = [points[i] for i in tour]
+            plt.plot([x[0] for x in points_tour], [x[1] for x in points_tour], '-')
+        plt.axis([0, 105, 0, 105])
+        plt.xlabel("km")
+        plt.ylabel("km")
+        model._plot.pyplot()
+        
 
-    def __repr__(self):
-        return "(" + str(self.x) + "," + str(self.y) + ")"
+# Given a tuplelist of edges, find the shortest subtour
 
-n = st.slider('How many destinations do you wish generate?', 5, 200, 5) 
+def subtour(edges):
+    unvisited = list(range(n))
+    cycle = range(n+1) # initial length has 1 more city
+    cycles = []
+    while unvisited: # true if list is non-empty
+        thiscycle = []
+        neighbors = unvisited
+        while neighbors:
+            current = neighbors[0]
+            thiscycle.append(current)
+            unvisited.remove(current)
+            neighbors = [j for i,j in edges.select(current,'*') if j in unvisited]
+        if len(cycle) > len(thiscycle):
+            cycle = thiscycle
+        cycles.append(thiscycle)
+    return (cycle,cycles)
 
-class Fitness:
-    def __init__(self, route):
-        self.route = route
-        self.dis = 0
-        self.fit = 0
 
-    def routeDistance(self):
-        if self.dis == 0:
-            pathDis = 0
-            # looping through route to calculate distance
-            for i in range(0, len(self.route)):
-                fromCity = self.route[i]
-                toCity = None
-                if i + 1 < len(self.route):
-                    # getting next city in route
-                    toCity = self.route[i + 1]
-                else:
-                    # returning to start city
-                    toCity = self.route[0]
-                pathDis += fromCity.distance(toCity)
-            self.dis = pathDis
-        return self.dis
+n = st.slider('How many destinations to generate?', 5, 200, 5)
+# Create n random points
+points = [(random.randint(0,100),random.randint(0,100)) for i in range(n)]
 
-    def fitnessScore(self):
-        if self.fit == 0:
-            self.fit = 1/float(self.routeDistance())
-        return self.fit
+# Dictionary of Euclidean distance between each pair of points
 
-def plotCities():
-    x = [cities.x for cities in cityL]
-    y = [cities.y for cities in cityL]
-    plt.scatter(x, y)
-    plt.plot(x, y)
-    plt.xlabel("X values")
-    plt.ylabel("Y values")
-    st.pyplot(plt)
+dist = {(i,j) :
+    math.sqrt(sum((points[i][k]-points[j][k])**2 for k in range(2)))
+    for i in range(n) for j in range(i)}
 
-def initValues(size):
-    # Initial City List
-    for i in range(0, 25):
-        cityL.append(City(x=int(random.random()*200),
-                        y=int(random.random()*200)))
+m = Model()
+m._subtours = 0
+m._summary = st.empty()
+m._plot = st.empty()
+m._points = points
+# Create variables
 
-    # Initial demographic
-    for i in range(0, size):
-        demographic.append(createRoute())
+vars = m.addVars(dist.keys(), obj=dist, vtype=GRB.BINARY, name='e')
+for i,j in vars.keys():
+    vars[j,i] = vars[i,j] # edge in opposite direction
 
-def createRoute():
-    route = random.sample(cityL, len(cityL))
-    return route
+# Add degree-2 constraint
 
-def rankRoutes():
-    results = {}
+m.addConstrs(vars.sum(i,'*') == 2 for i in range(n))
 
-    for i in range(0, len(demographic)):
-        results[i] = Fitness(route=demographic[i]).fitnessScore()
+# Optimize model
 
-    return sorted(results.items(), key=lambda kv: kv[1], reverse=True)
+m._vars = vars
+m.Params.lazyConstraints = 1
+m.optimize(subtourelim)
 
-def selection(rankedList, size):
-    selectionResults = []
+vals = m.getAttr('x', vars)
+selected = tuplelist((i,j) for i,j in vals.keys() if vals[i,j] > 0.5)
 
-    for i in range(0, size):
-        selectionResults.append(rankedList[i][0])
-    for i in range(0, len(rankedList) - size):
-        player_1 = random.randint(0, len(rankedList)-1)
-        player_2 = random.randint(0, len(rankedList)-1)
-        if rankedList[player_1][1] >= rankedList[player_2][1]:
-            selectionResults.append(rankedList[player_1][0])
-        else:
-            selectionResults.append(rankedList[player_2][0])
+tour,tours = subtour(selected)
+assert len(tour) == n
+tour.append(tour[0])
+points_tour = [points[i] for i in tour]
 
-    return selectionResults
+current_length = round(m.objVal)
+best = round(m.objVal)
+bound = max(0,round(m.objVal))
+m._summary.markdown("**Sub tour elimination constraints** {:d} **Lower bound** {:d}km  \n**Current Solution**  {:d}km  - {:d} subtour(s)".format(m._subtours,bound,current_length,len(tours)))
 
-def matingPool(demographic, selectionResults):
-    pool = []
+plt.plot([x[0] for x in points_tour], [x[1] for x in points_tour], '-o')
+plt.axis([0, 105, 0, 105])
+plt.xlabel("km")
+plt.ylabel("km")
+m._plot.pyplot()
 
-    for i in range(0, len(selectionResults)):
-        index = selectionResults[i]
-        pool.append(demographic[index])
-    return pool
-
-def breed(p1, p2):
-    child = []
-    childP1 = []
-    childP2 = []
-
-    # ordered crossover
-    geneA = int(random.random() * len(p1))
-    geneB = int(random.random() * len(p1))
-
-    startGene = min(geneA, geneB)
-    endGene = max(geneA, geneB)
-
-    for i in range(startGene, endGene):
-        childP1.append(p1[i])
-
-    childP2 = [gene for gene in p2 if gene not in childP1]
-
-    child = childP1 + childP2
-    return child
-
-def breedPop(pool, size):
-    children = []
-    total = len(pool) - size
-    samplePool = random.sample(pool, len(pool))
-
-    # using elitism
-    for i in range(0, size):
-        children.append(pool[i])
-
-    # breed for the rest of the pool
-    for i in range(0, total):
-        child = breed(samplePool[i], samplePool[(len(pool) - i) - 1])
-        children.append(child)
-    return children
-
-def mutate(individual, mutationRate):
-    for swapped in range(len(individual)):
-        if random.random() < mutationRate:
-            swapWith = int(random.random() * len(individual))
-
-            city1 = individual[swapped]
-            city2 = individual[swapWith]
-
-            individual[swapped] = city2
-            individual[swapWith] = city1
-    return individual
-
-def mutatedDemographic(children, mutationRate):
-    mutatedPop = []
-
-    for i in range(0, len(children)):
-        mutated = mutate(children[i], mutationRate)
-        mutatedPop.append(mutated)
-    return mutatedPop
-
-def nextGeneration(currentGen, eliteSize, mutationRate):
-    rankedList = rankRoutes()
-    selectionResults = selection(rankedList, eliteSize)
-    matingPool = matingPool(currentGen, selectionResults)
-    children = breedPop(matingPool, eliteSize)
-    nextGeneration = mutatedDemographic(children, mutationRate)
-    return nextGeneration
-
-def geneAlgo(popSize, eliteSize, mutationRate, generations):
-    global demographic
-    initValues(popSize)
-    progress = []
-    st.write("The initial distance is: " + str(1 / rankRoutes()[0][1]))
-    progress.append(1 / rankRoutes()[0][1])
-
-    for i in range(0, generations):
-        demographic = nextGeneration(demographic, eliteSize, mutationRate)
-        progress.append(1 / rankRoutes()[0][1])
-
-    st.write("The final distance is: " + str(1 / rankRoutes()[0][1]))
-    bestRouteIndex = rankRoutes()[0][0]
-    bestRoute = demographic[bestRouteIndex]
-    
-    st.write("Best Route:")
-    st.write(bestRoute)
-    
-    fig, axs = plt.subplots(2)
-    axs[0].plot(progress)
-    axs[0].set_title("Progress Graph")
-    axs[1].set_title("Final Path Graph")
-
-    x = [city.x for city in bestRoute]
-    x.append(bestRoute[0].x)
-    y = [city.y for city in bestRoute]
-    y.append(bestRoute[0].y)
-
-    axs[1].scatter(x, y)
-    axs[1].plot(x, y)
-    axs[1].set_xlabel("X values")
-    axs[1].set_ylabel("Y values")
-
-    plt.tight_layout()
-    st.pyplot
+st.write('')
+#st.write('Optimal tour: %s' % str(tour))
+st.write('Optimal cost: {:0.1f}km'.format(m.objVal))
+st.write('Running time to optimize: {:0.1f}s'.format(m.Runtime))
+st.write('Sub tour constraint added: {:d}'.format(m._subtours)) 
