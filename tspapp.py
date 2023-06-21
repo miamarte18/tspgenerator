@@ -20,7 +20,7 @@ with st.container():
     
     st.title('Travelling salesman problem')
     st.subheader("Project 2 by Sofia Torres, Stephanie Seanz, and Mia Marte")
-    st.write("The purpose of this project is to find the shortest path ")
+    st.write("Using the travelling salesman problem we incorporate generic algorithms to find\n the shortest path of the distance from the starting point ")
 
 
 class City:
